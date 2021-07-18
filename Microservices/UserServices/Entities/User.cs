@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
-namespace UserService.Entities
+﻿namespace UserService.Entities
 {
     public class User
     {
@@ -14,5 +9,7 @@ namespace UserService.Entities
         public string Email { get; set; }
 
         public string OtherData { get; set; }
+
+        public int Version { get; set; }
     }
 }
