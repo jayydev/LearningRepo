@@ -5,6 +5,8 @@ using RabbitMQ.Client;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
+using UserService;
 using UserService.Data;
 using UserService.Entities;
 
@@ -14,31 +16,45 @@ namespace UserServices.Controllers
     [Route("api/[controller]")]
     public class UserController : ControllerBase
     {
-        private readonly UserServiceContext context;
+        private readonly UserServiceContext dbContext;
+        private readonly IntegrationEventSenderService integEventSenderSvc;
 
-        public  UserController(UserServiceContext context)
+        public  UserController(UserServiceContext context, IntegrationEventSenderService integEventSenderSvc)
         {
-            this.context = context;
+            this.dbContext = context;
+            this.integEventSenderSvc = integEventSenderSvc;
         }
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUser()
         {
-            return await context.User.ToListAsync();
+            return await dbContext.User.ToListAsync();
         }
         
         [HttpPut("{id}")]
         public async Task<IActionResult> PutUser(int id, User user)
         {
-            context.Entry(user).State = EntityState.Modified;
-            await context.SaveChangesAsync();
+            using var transaction = dbContext.Database.BeginTransaction();
 
+            dbContext.Entry(user).State = EntityState.Modified;
+            await dbContext.SaveChangesAsync();
+            
             var integrationEventData = JsonConvert.SerializeObject(new
             {
                 id = user.ID,
                 newname = user.Name
             });
-            PublishToMessageQueue("user.update", integrationEventData);
+            //PublishToMessageQueue("user.update", integrationEventData);
+
+            dbContext.IntegrationEventOutbox.Add(
+                new IntegrationEvent()
+                {
+                    Event = "user.update",
+                    Data = integrationEventData
+                });
+
+            _ = dbContext.SaveChanges();
+            transaction.Commit();
 
 
             return NoContent();
@@ -47,15 +63,27 @@ namespace UserServices.Controllers
         [HttpPost]
         public async Task<ActionResult<User>> PostUser(User user)
         {
-            context.User.Add(user);
-            await context.SaveChangesAsync();
+            var transaction = dbContext.Database.BeginTransaction();
+
+            dbContext.User.Add(user);
+            await dbContext.SaveChangesAsync();
 
             var integrationEventData = JsonConvert.SerializeObject(new
             {
                 id = user.ID,
                 name = user.Name
             });
-            PublishToMessageQueue("user.add", integrationEventData);
+            //PublishToMessageQueue("user.add", integrationEventData);
+
+            dbContext.IntegrationEventOutbox.Add(
+                new IntegrationEvent
+                {
+                    Event = "user.add",
+                    Data = integrationEventData
+                });
+
+            _ = dbContext.SaveChanges();
+            transaction.Commit();
 
             return CreatedAtAction("GetUser", new { id = user.ID }, user);
         }
