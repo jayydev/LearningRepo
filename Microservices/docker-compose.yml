@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  postservicenew:
+    image: ${DOCKER_REGISTRY-}postservicenew
+    build:
+      context: .
+      dockerfile: PostServiceNew/dockerfile
